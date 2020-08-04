@@ -2246,7 +2246,9 @@ static const char e1000e_phy_regcap[E1000E_PHY_PAGES][0x20] = {
         [PHY_BIAS_2]            = PHY_RW,
         [PHY_COPPER_INT_ENABLE] = PHY_RW,
         [PHY_COPPER_STAT2]      = PHY_R,
-        [PHY_COPPER_CTRL2]      = PHY_RW
+        [PHY_COPPER_CTRL2]      = PHY_RW,
+        /* igb */
+        [31]                    = PHY_W,
     },
     [2] = {
         [PHY_MAC_CTRL1]         = PHY_RW,

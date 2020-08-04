@@ -54,42 +54,17 @@
 #include "trace.h"
 #include "qapi/error.h"
 
-#define TYPE_E1000E "e1000e"
-#define E1000E(obj) OBJECT_CHECK(E1000EState, (obj), TYPE_E1000E)
+#include "e1000e.h"
 
-typedef struct E1000EState {
-    PCIDevice parent_obj;
-    NICState *nic;
-    NICConf conf;
+typedef struct E1000EBaseClass {
+    PCIDeviceClass parent_class;
+    int msix_vec_num;
+} E1000EBaseClass;
 
-    MemoryRegion mmio;
-    MemoryRegion flash;
-    MemoryRegion io;
-    MemoryRegion msix;
-
-    uint32_t ioaddr;
-
-    uint16_t subsys_ven;
-    uint16_t subsys;
-
-    uint16_t subsys_ven_used;
-    uint16_t subsys_used;
-
-    bool disable_vnet;
-
-    E1000ECore core;
-
-} E1000EState;
-
-#define E1000E_MMIO_IDX     0
-#define E1000E_FLASH_IDX    1
-#define E1000E_IO_IDX       2
-#define E1000E_MSIX_IDX     3
-
-#define E1000E_MMIO_SIZE    (128 * KiB)
-#define E1000E_FLASH_SIZE   (128 * KiB)
-#define E1000E_IO_SIZE      (32)
-#define E1000E_MSIX_SIZE    (16 * KiB)
+#define E1000E_DEVICE_CLASS(klass) \
+     OBJECT_CLASS_CHECK(E1000EBaseClass, (klass), TYPE_E1000E)
+#define E1000E_DEVICE_GET_CLASS(obj) \
+    OBJECT_GET_CLASS(E1000EBaseClass, (obj), TYPE_E1000E)
 
 #define E1000E_MSIX_TABLE   (0x0000)
 #define E1000E_MSIX_PBA     (0x2000)
@@ -293,7 +268,8 @@ static void
 e1000e_init_msix(E1000EState *s)
 {
     PCIDevice *d = PCI_DEVICE(s);
-    int res = msix_init(PCI_DEVICE(s), E1000E_MSIX_VEC_NUM,
+    E1000EBaseClass *edc = E1000E_DEVICE_GET_CLASS(s);
+    int res = msix_init(PCI_DEVICE(s), edc->msix_vec_num,
                         &s->msix,
                         E1000E_MSIX_IDX, E1000E_MSIX_TABLE,
                         &s->msix,
@@ -303,7 +279,7 @@ e1000e_init_msix(E1000EState *s)
     if (res < 0) {
         trace_e1000e_msix_init_fail(res);
     } else {
-        if (!e1000e_use_msix_vectors(s, E1000E_MSIX_VEC_NUM)) {
+        if (!e1000e_use_msix_vectors(s, edc->msix_vec_num)) {
             msix_uninit(d, &s->msix, &s->msix);
         }
     }
@@ -312,8 +288,9 @@ e1000e_init_msix(E1000EState *s)
 static void
 e1000e_cleanup_msix(E1000EState *s)
 {
+    E1000EBaseClass *edc = E1000E_DEVICE_GET_CLASS(s);
     if (msix_present(PCI_DEVICE(s))) {
-        e1000e_unuse_msix_vectors(s, E1000E_MSIX_VEC_NUM);
+        e1000e_unuse_msix_vectors(s, edc->msix_vec_num);
         msix_uninit(PCI_DEVICE(s), &s->msix, &s->msix);
     }
 }
@@ -415,7 +392,7 @@ static void e1000e_write_config(PCIDevice *pci_dev, uint32_t address,
     }
 }
 
-static void e1000e_pci_realize(PCIDevice *pci_dev, Error **errp)
+void e1000e_pci_realize(PCIDevice *pci_dev, Error **errp)
 {
     static const uint16_t e1000e_pmrb_offset = 0x0C8;
     static const uint16_t e1000e_pcie_offset = 0x0E0;
@@ -441,8 +418,12 @@ static void e1000e_pci_realize(PCIDevice *pci_dev, Error **errp)
     /* Define IO/MMIO regions */
     memory_region_init_io(&s->mmio, OBJECT(s), &mmio_ops, s,
                           "e1000e-mmio", E1000E_MMIO_SIZE);
-    pci_register_bar(pci_dev, E1000E_MMIO_IDX,
-                     PCI_BASE_ADDRESS_SPACE_MEMORY, &s->mmio);
+    if (pci_is_vf(pci_dev)) {
+        pcie_sriov_vf_register_bar(pci_dev, E1000E_MMIO_IDX, &s->mmio);
+    } else {
+        pci_register_bar(pci_dev, E1000E_MMIO_IDX,
+                         PCI_BASE_ADDRESS_SPACE_MEMORY, &s->mmio);
+    }
 
     /*
      * We provide a dummy implementation for the flash BAR
@@ -450,18 +431,26 @@ static void e1000e_pci_realize(PCIDevice *pci_dev, Error **errp)
      */
     memory_region_init(&s->flash, OBJECT(s),
                        "e1000e-flash", E1000E_FLASH_SIZE);
-    pci_register_bar(pci_dev, E1000E_FLASH_IDX,
-                     PCI_BASE_ADDRESS_SPACE_MEMORY, &s->flash);
+    if (!pci_is_vf(pci_dev)) {
+        pci_register_bar(pci_dev, E1000E_FLASH_IDX,
+                         PCI_BASE_ADDRESS_SPACE_MEMORY, &s->flash);
+    }
 
     memory_region_init_io(&s->io, OBJECT(s), &io_ops, s,
                           "e1000e-io", E1000E_IO_SIZE);
-    pci_register_bar(pci_dev, E1000E_IO_IDX,
-                     PCI_BASE_ADDRESS_SPACE_IO, &s->io);
+    if (!pci_is_vf(pci_dev)) {
+        pci_register_bar(pci_dev, E1000E_IO_IDX,
+                         PCI_BASE_ADDRESS_SPACE_IO, &s->io);
+    }
 
     memory_region_init(&s->msix, OBJECT(s), "e1000e-msix",
                        E1000E_MSIX_SIZE);
-    pci_register_bar(pci_dev, E1000E_MSIX_IDX,
-                     PCI_BASE_ADDRESS_SPACE_MEMORY, &s->msix);
+    if (pci_is_vf(pci_dev)) {
+        pcie_sriov_vf_register_bar(pci_dev, E1000E_MSIX_IDX, &s->msix);
+    } else {
+        pci_register_bar(pci_dev, E1000E_MSIX_IDX,
+                         PCI_BASE_ADDRESS_SPACE_MEMORY, &s->msix);
+    }
 
     /* Create networking backend */
     qemu_macaddr_default_if_unset(&s->conf.macaddr);
@@ -502,7 +491,7 @@ static void e1000e_pci_realize(PCIDevice *pci_dev, Error **errp)
                             macaddr);
 }
 
-static void e1000e_pci_uninit(PCIDevice *pci_dev)
+void e1000e_pci_uninit(PCIDevice *pci_dev)
 {
     E1000EState *s = E1000E(pci_dev);
 
@@ -519,7 +508,7 @@ static void e1000e_pci_uninit(PCIDevice *pci_dev)
     msi_uninit(pci_dev);
 }
 
-static void e1000e_qdev_reset(DeviceState *dev)
+void e1000e_qdev_reset(DeviceState *dev)
 {
     E1000EState *s = E1000E(dev);
 
@@ -636,13 +625,13 @@ static const VMStateDescription e1000e_vmstate = {
         VMSTATE_BOOL(core.itr_intr_pending, E1000EState),
 
         VMSTATE_E1000E_INTR_DELAY_TIMER_ARRAY(core.eitr, E1000EState,
-                                              E1000E_MSIX_VEC_NUM),
+                                              E1000E_MSIX_VEC_NUM_MAX),
         VMSTATE_BOOL_ARRAY(core.eitr_intr_pending, E1000EState,
-                           E1000E_MSIX_VEC_NUM),
+                           E1000E_MSIX_VEC_NUM_MAX),
 
         VMSTATE_UINT32(core.itr_guest_value, E1000EState),
         VMSTATE_UINT32_ARRAY(core.eitr_guest_value, E1000EState,
-                             E1000E_MSIX_VEC_NUM),
+                             E1000E_MSIX_VEC_NUM_MAX),
 
         VMSTATE_UINT16(core.vet, E1000EState),
 
@@ -668,10 +657,14 @@ static Property e1000e_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void e1000e_class_init(ObjectClass *class, void *data)
+void e1000e_class_init(ObjectClass *class, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(class);
     PCIDeviceClass *c = PCI_DEVICE_CLASS(class);
+    E1000EBaseClass *e = E1000E_DEVICE_CLASS(class);
+    const E1000EClassInitData *class_data = data;
+
+    e->msix_vec_num = class_data->msix_vec_num;
 
     c->realize = e1000e_pci_realize;
     c->exit = e1000e_pci_uninit;
@@ -708,11 +701,17 @@ static void e1000e_instance_init(Object *obj)
                                   DEVICE(obj), NULL);
 }
 
+static const E1000EClassInitData e1000e_class_data = {
+    .msix_vec_num = E1000E_MSIX_VEC_NUM,
+};
+
 static const TypeInfo e1000e_info = {
     .name = TYPE_E1000E,
     .parent = TYPE_PCI_DEVICE,
     .instance_size = sizeof(E1000EState),
     .class_init = e1000e_class_init,
+    .class_size = sizeof(E1000EBaseClass),
+    .class_data = (void *)&e1000e_class_data,
     .instance_init = e1000e_instance_init,
     .interfaces = (InterfaceInfo[]) {
         { INTERFACE_PCIE_DEVICE },
