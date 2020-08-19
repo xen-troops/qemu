@@ -145,13 +145,12 @@ void pcie_sriov_vf_register_bar(PCIDevice *dev, int region_num,
 static PCIDevice *register_vf(PCIDevice *pf, int devfn, const char *name,
                               uint16_t vf_num)
 {
-    PCIDevice *dev = pci_new(devfn, name);
+    PCIDevice *dev = pci_create(pci_get_bus(pf), devfn, name);
     dev->exp.sriov_vf.pf = pf;
     dev->exp.sriov_vf.vf_number = vf_num;
-    PCIBus* bus = pci_get_bus(pf);
     Error *local_err = NULL;
 
-    qdev_realize(&dev->qdev, &bus->qbus, &local_err);
+    object_property_set_bool(OBJECT(&dev->qdev), true, "realized", &local_err);
     if (local_err) {
         error_report_err(local_err);
         return NULL;
