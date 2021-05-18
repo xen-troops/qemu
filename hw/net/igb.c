@@ -695,6 +695,15 @@ static Property igb_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
+static void igb_set_props(void)
+{
+    igb_prop_subsys_ven = qdev_prop_uint16;
+    igb_prop_subsys_ven.description = "PCI device Subsystem Vendor ID";
+
+    igb_prop_subsys = qdev_prop_uint16;
+    igb_prop_subsys.description = "PCI device Subsystem ID";
+}
+
 static void igb_class_init(ObjectClass *class, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(class);
@@ -712,12 +721,7 @@ static void igb_class_init(ObjectClass *class, void *data)
     dc->reset = igb_reset;
     dc->vmsd = &igb_vmstate;
 
-    igb_prop_subsys_ven = qdev_prop_uint16;
-    igb_prop_subsys_ven.description = "PCI device Subsystem Vendor ID";
-
-    igb_prop_subsys = qdev_prop_uint16;
-    igb_prop_subsys.description = "PCI device Subsystem ID";
-
+    igb_set_props();
     device_class_set_props(dc, igb_properties);
     set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
 }
@@ -747,6 +751,7 @@ static void igbvf_class_init(ObjectClass *class, void *data)
     dc->desc = "Intel 82576 GbE Controller Virtual Function";
     dc->reset = igbvf_reset;
     dc->vmsd = &igb_vmstate;
+    igb_set_props();
     device_class_set_props(dc, igb_properties);
 }
 
