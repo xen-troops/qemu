@@ -182,12 +182,38 @@ static void rp_cmd_rw(RemotePortMemorySlave *s, struct rp_pkt *pkt,
     rp_write(s->rp, (void *)s->rsp.pkt, enclen);
 }
 
+static AddressSpace *bus_iommu_address_space(BusState *iommu_bus,
+                                             uint32_t iommu_id, uint16_t devid)
+{
+    if (iommu_bus && iommu_bus->iommu[iommu_id].iommu_ops) {
+        return iommu_bus->iommu[iommu_id].iommu_ops->get_address_space(
+            iommu_bus, iommu_bus->iommu[iommu_id].iommu_opaque, devid);
+    }
+    return &address_space_memory;
+}
+
+static void rp_memory_slave_init_done(Notifier *notifier, void *data)
+{
+    RemotePortMemorySlave *s = container_of(notifier, RemotePortMemorySlave,
+                                            machine_done);
+    AddressSpace *as;
+
+    if (s->channel_id) {
+        as = bus_iommu_address_space(sysbus_get_default(), s->iommu_id,
+                                     s->rp_stream_id);
+        address_space_init(&s->as, as->root, "dma");
+    } else {
+        address_space_init(&s->as, s->mr ? s->mr : get_system_memory(), "dma");
+    }
+}
+
 static void rp_memory_slave_realize(DeviceState *dev, Error **errp)
 {
     RemotePortMemorySlave *s = REMOTE_PORT_MEMORY_SLAVE(dev);
 
     s->peer = rp_get_peer(s->rp);
-    address_space_init(&s->as, s->mr ? s->mr : get_system_memory(), "dma");
+    s->machine_done.notify = rp_memory_slave_init_done;
+    qemu_add_machine_init_done_notifier(&s->machine_done);
 }
 
 static void rp_memory_slave_write(RemotePortDevice *s, struct rp_pkt *pkt)
@@ -232,10 +258,17 @@ static void rp_memory_slave_unrealize(DeviceState *dev)
     address_space_destroy(&s->as);
 }
 
+static Property rp_properties[] = {
+    DEFINE_PROP_UINT32("iommu-id", RemotePortMemorySlave, iommu_id, 0),
+    DEFINE_PROP_UINT32("rp-chan0", RemotePortMemorySlave, channel_id, 0),
+    DEFINE_PROP_END_OF_LIST()
+};
+
 static void rp_memory_slave_class_init(ObjectClass *oc, const void *data)
 {
     RemotePortDeviceClass *rpdc = REMOTE_PORT_DEVICE_CLASS(oc);
     DeviceClass *dc = DEVICE_CLASS(oc);
+    device_class_set_props_n(dc, rp_properties, ARRAY_SIZE(rp_properties));
 
     rpdc->ops[RP_CMD_write] = rp_memory_slave_write;
     rpdc->ops[RP_CMD_read] = rp_memory_slave_read;
