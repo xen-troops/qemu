@@ -366,7 +366,10 @@ static int iort_smmuv3_devices(Object *obj, void *opaque)
         return 0;
     }
 
-    bus = PCI_BUS(object_property_get_link(obj, "primary-bus", &error_abort));
+    bus = PCI_BUS(object_property_get_link(obj, "pci-primary-bus", &error_abort));
+    if (!bus)
+        return 0;
+
     pbus = PLATFORM_BUS_DEVICE(vms->platform_bus_dev);
     sbdev = SYS_BUS_DEVICE(obj);
     sdev.base = platform_bus_get_mmio_addr(pbus, sbdev, 0);

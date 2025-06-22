@@ -1469,8 +1469,8 @@ static void virtio_iommu_device_realize(DeviceState *dev, Error **errp)
     s->host_iommu_devices = g_hash_table_new_full(hiod_hash, hiod_equal,
                                                   g_free, hiod_destroy);
 
-    if (s->primary_bus) {
-        pci_setup_iommu(s->primary_bus, &virtio_iommu_ops, s);
+    if (s->pci_primary_bus) {
+        pci_setup_iommu(s->pci_primary_bus, &virtio_iommu_ops, s);
     } else {
         error_setg(errp, "VIRTIO-IOMMU is not attached to any PCI bus!");
     }
@@ -1657,7 +1657,7 @@ static const VMStateDescription vmstate_virtio_iommu = {
 };
 
 static const Property virtio_iommu_properties[] = {
-    DEFINE_PROP_LINK("primary-bus", VirtIOIOMMU, primary_bus,
+    DEFINE_PROP_LINK("pci-primary-bus", VirtIOIOMMU, pci_primary_bus,
                      TYPE_PCI_BUS, PCIBus *),
     DEFINE_PROP_BOOL("boot-bypass", VirtIOIOMMU, boot_bypass, true),
     DEFINE_PROP_GRANULE_MODE("granule", VirtIOIOMMU, granule_mode,

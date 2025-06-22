@@ -236,7 +236,7 @@ User-creatable SMMUv3 devices
   user-defined SMMUv3 devices, each associated with a separate PCIe
   root complex. This is only permitted if the machine-wide SMMUv3
   (``iommu=smmuv3``) option is not used. Each ``arm-smmuv3`` device
-  uses the ``primary-bus`` sub-option to specify which PCIe root
+  uses the ``pci-primary-bus`` sub-option to specify which PCIe root
   complex it is associated with.
 
   This model is useful when you want to mirror a host configuration where

@@ -3055,7 +3055,7 @@ static void virt_machine_device_pre_plug_cb(HotplugHandler *hotplug_dev,
                        "iommu=smmuv3" : "virtio-iommu");
         } else if (vms->iommu == VIRT_IOMMU_NONE) {
             /* The new SMMUv3 device is specific to the PCI bus */
-            object_property_set_bool(OBJECT(dev), "smmu_per_bus", true, NULL);
+            object_property_set_bool(OBJECT(dev), "pci_smmu_per_bus", true, NULL);
             object_property_set_link(OBJECT(dev), "memory",
                                      OBJECT(vms->sysmem), NULL);
             object_property_set_link(OBJECT(dev), "secure-memory",
@@ -3088,7 +3088,7 @@ static void virt_machine_device_plug_cb(HotplugHandler *hotplug_dev,
         if (!vms->legacy_smmuv3_present && vms->platform_bus_dev) {
             PCIBus *bus;
 
-            bus = PCI_BUS(object_property_get_link(OBJECT(dev), "primary-bus",
+            bus = PCI_BUS(object_property_get_link(OBJECT(dev), "pci-primary-bus",
                                                    &error_abort));
             if (pci_bus_bypass_iommu(bus)) {
                 error_setg(errp, "Bypass option cannot be set for SMMUv3 "

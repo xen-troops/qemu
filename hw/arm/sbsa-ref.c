@@ -625,7 +625,7 @@ static void create_smmu(const SBSAMachineState *sms, PCIBus *bus,
     dev = qdev_new(TYPE_ARM_SMMUV3);
 
     object_property_set_str(OBJECT(dev), "stage", "nested", &error_abort);
-    object_property_set_link(OBJECT(dev), "primary-bus", OBJECT(bus),
+    object_property_set_link(OBJECT(dev), "pci-primary-bus", OBJECT(bus),
                              &error_abort);
     object_property_set_link(OBJECT(dev), "memory", OBJECT(sysmem),
                              &error_abort);

@@ -66,7 +66,7 @@ static void virtio_iommu_pci_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
         return;
     }
 
-    object_property_set_link(OBJECT(dev), "primary-bus",
+    object_property_set_link(OBJECT(dev), "pci-primary-bus",
                              OBJECT(pbus), &error_abort);
 
     virtio_pci_force_virtio_1(vpci_dev);

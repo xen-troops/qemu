@@ -1233,10 +1233,10 @@ SRST
     ``aw-bits=val`` (val between 32 and 64, default depends on machine)
         This decides the address width of the IOVA address space.
 
-``-device arm-smmuv3,primary-bus=id``
+``-device arm-smmuv3,pci-primary-bus=id``
     This is only supported by ``-machine virt`` (ARM).
 
-    ``primary-bus=id``
+    ``pci-primary-bus=id``
         Accepts either the default root complex (pcie.0) or a
         pxb-pcie based root complex.
 

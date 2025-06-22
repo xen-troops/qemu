@@ -2410,9 +2410,9 @@ static void test_acpi_aarch64_virt_smmuv3_dev(void)
                   " -device scsi-cd,bus=scsi0.0,scsi-id=0,"
                   "drive=drive-scsi0-0-0-1,id=scsi0-0-0-1,bootindex=1"
                   " -cpu cortex-a57"
-                  " -device arm-smmuv3,primary-bus=pcie.0,id=smmuv3.0"
+                  " -device arm-smmuv3,pci-primary-bus=pcie.0,id=smmuv3.0"
                   " -device pxb-pcie,id=pcie.1,bus=pcie.0,bus_nr=0x10"
-                  " -device arm-smmuv3,primary-bus=pcie.1,id=smmuv3.1"
+                  " -device arm-smmuv3,pci-primary-bus=pcie.1,id=smmuv3.1"
                   " -device pxb-pcie,id=pcie.2,bus=pcie.0,bus_nr=0x20",
                   &data);
     free_test_data(&data);

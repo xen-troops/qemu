@@ -59,7 +59,7 @@ struct VirtIOIOMMU {
     GHashTable *as_by_busptr;
     GHashTable *host_iommu_devices;
     IOMMUPciBus *iommu_pcibus_by_bus_num[PCI_BUS_MAX];
-    PCIBus *primary_bus;
+    PCIBus *pci_primary_bus;
     ReservedRegion *prop_resv_regions;
     uint32_t nr_prop_resv_regions;
     GTree *domains;
