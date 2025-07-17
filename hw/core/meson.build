@@ -34,6 +34,7 @@ system_ss.add(when: 'CONFIG_REMOTE_PORT', if_true: files(
   'remote-port-gpio.c',
   'remote-port-stream.c',
   'remote-port-ats.c',
+  'remote-port-qdev.c'
 ))
 
 system_ss.add(files(

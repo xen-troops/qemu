@@ -134,6 +134,33 @@ struct RemotePort {
     RemotePortDevice *devs[REMOTE_PORT_MAX_DEVS];
 };
 
+/**
+ * rp_device_attach:
+ * @adaptor: The adaptor onto which to attach the device
+ * @dev: The device to be attached to the adaptor
+ * @rp_nr: The remote-port adaptor nr. A device may attach to multiple
+ *         adaptors.
+ * @dev_nr: The device/channel number to bind the device to.
+ * @errp: returns an error if this function fails
+ *
+ * Attaches a device onto an adaptor and binds it to a device number.
+ */
+void rp_device_attach(Object *adaptor, Object *dev,
+                      int rp_nr, int dev_nr,
+                      Error **errp);
+void rp_device_detach(Object *adaptor, Object *dev,
+                      int rp_nr, int dev_nr,
+                      Error **errp);
+/**
+ * rp_device_add
+ * @opts:  qdev opts created by the qdev subsystem
+ * @dev: The device to be connected
+ * @errp: Returns an error if the function fails
+ *
+ * Function used in qdev-monitor.c to connect remote port devices.
+ * Returns teue on success and false on failure.
+ */
+bool rp_device_add(const QDict *opts, DeviceState *dev, Error **errp);
 
 void rp_rsp_mutex_lock(RemotePort *s);
 void rp_rsp_mutex_unlock(RemotePort *s);
