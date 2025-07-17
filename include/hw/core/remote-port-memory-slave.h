@@ -23,7 +23,6 @@ typedef struct RemotePortMemorySlave {
     /* private */
     SysBusDevice parent;
     /* public */
-    uint32_t channel_id;
     struct RemotePort *rp;
     struct rp_peer_state *peer;
     MemoryRegion *mr;
@@ -32,6 +31,9 @@ typedef struct RemotePortMemorySlave {
     RemotePortDynPkt rsp;
     RemotePortATSCache *ats_cache;
     Notifier machine_done;
+    uint32_t rp_stream_id;
+    RemotePortATS *rp_ats;
+    uint32_t rp_ats_id;
     uint32_t iommu_id;
 } RemotePortMemorySlave;
 #endif

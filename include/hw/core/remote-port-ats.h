@@ -45,6 +45,9 @@ typedef struct {
     GArray *iommu_notifiers;
     uint32_t rp_dev;
     GArray *cache; /* Translation cache */
+    Notifier machine_done;
+    uint32_t rp_stream_id;
+    uint32_t iommu_id;
 } RemotePortATS;
 
 #define TYPE_REMOTE_PORT_ATS_CACHE "remote-port-ats-cache"

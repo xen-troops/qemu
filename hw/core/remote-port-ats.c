@@ -33,9 +33,28 @@
 #include "migration/vmstate.h"
 #include "hw/core/qdev-properties.h"
 #include "trace.h"
+#include "qemu/cutils.h"
 
 #include "hw/core/remote-port-proto.h"
 #include "hw/core/remote-port-ats.h"
+
+#define RP_TRACE_LVL_NONE   (0u)
+#define RR_TRACE_LVL_ERROR  (1u)
+#define RP_TRACE_LVL_WARN   (2u)
+#define RP_TRACE_LVL_INFO   (3u)
+
+#define RP_TRACE_LEVEL (RP_TRACE_LVL_INFO)
+
+#ifndef RP_TRACE_LEVEL
+#define RP_TRACE_LEVEL (RP_TRACE_LVL_NONE)
+#endif
+
+#define RP_TRACE(level, ...) do { \
+    if (RP_TRACE_LEVEL >= level) { \
+        fprintf(stderr,  "[TRACE] %s(): ", __func__); \
+        fprintf(stderr, ## __VA_ARGS__); \
+    } \
+} while (0);
 
 typedef struct ATSIOMMUNotifier {
     IOMMUNotifier n;
@@ -190,6 +209,17 @@ static void rp_ats_cache_insert(RemotePortATS *s,
     iotlb->addr_mask = mask;
     iotlb->target_as = target_as;
     g_array_append_val(s->cache, iotlb);
+
+    char *target_as_name = strdup(iotlb->target_as->name); 
+    RP_TRACE(RP_TRACE_LVL_INFO, "IOMMUTLBEntry entry added to cache\r\n");
+    RP_TRACE(RP_TRACE_LVL_INFO, "iova: 0x%" PRIx64 " translated_addr: 0x%" \
+       PRIx64 " addr_mask: 0x%" PRIx64 " target_as: %s perm: 0x%" PRIx32 "\r\n",
+        iotlb->iova,
+        iotlb->translated_addr,
+        iotlb->addr_mask,
+        target_as_name,
+        iotlb->perm);
+    free(target_as_name);
 }
 
 static void rp_ats_iommu_unmap_notify(IOMMUNotifier *n, IOMMUTLBEntry *iotlb)
@@ -215,11 +245,20 @@ static bool ats_translate_address(RemotePortATS *s, struct rp_pkt *pkt,
     mr = ats_do_translate(&s->as, pkt->ats.addr, phys_addr, phys_len,
                           &target_as, &prot, attrs);
     if (!mr) {
+        RP_TRACE(RP_TRACE_LVL_INFO, "Remote Port ATS translation failed\r\n");
         return false;
     }
 
+    RP_TRACE(RP_TRACE_LVL_INFO,
+        "Remote Port ATS translation succeeded - aka. ats_do_translate()\r\n");
+    RP_TRACE(RP_TRACE_LVL_INFO,
+        "phys_addr: 0x%" PRIx64 " phys_len: 0x%" PRIx64 "\r\n",
+        *phys_addr, *phys_len);
+
     iommu_mr = memory_region_get_iommu(mr);
     if (iommu_mr) {
+        RP_TRACE(RP_TRACE_LVL_INFO,
+        "Memory region obtained from ats_do_translate() is associated with IOMMU\r\n");
         int iommu_idx = memory_region_iommu_attrs_to_index(iommu_mr, attrs);
         ATSIOMMUNotifier *notifier;
         int i;
@@ -284,10 +323,22 @@ static void rp_ats_req(RemotePortDevice *dev, struct rp_pkt *pkt)
 
     assert(!(pkt->hdr.flags & RP_PKT_FLAGS_response));
 
+    RP_TRACE(RP_TRACE_LVL_INFO, "Remote Port ATS request is received\r\n")
+    RP_TRACE(RP_TRACE_LVL_INFO, "cmd 0x%" PRIx32 " len: 0x%" PRIx32 " id: 0x%" \
+        PRIx32 " flags: 0x%" PRIx32 " dev: 0x%" PRIx32 "\r\n",
+        pkt->hdr.cmd, pkt->hdr.len, pkt->hdr.id, pkt->hdr.flags, pkt->hdr.dev);
+    RP_TRACE(RP_TRACE_LVL_INFO, "timestamp 0x%" PRIx64 " attributes: 0x%" PRIx64 
+        " addr: 0x%" PRIx64 " len: 0x%" PRIx64 " result: 0x%" PRIx32 "\r\n",
+        pkt->ats.timestamp, pkt->ats.attributes, pkt->ats.addr, pkt->ats.len,
+        pkt->ats.result);
+
     rp_dpkt_alloc(&s->rsp, pktlen);
 
     result = ats_translate_address(s, pkt, &phys_addr, &phys_len) ?
         RP_ATS_RESULT_ok : RP_ATS_RESULT_error;
+
+    RP_TRACE(RP_TRACE_LVL_INFO, "Remote Port ATS translation is %s\r\n",
+            ((result == RP_ATS_RESULT_ok) ? "successful" : "unsuccessful"));
 
     /*
      * delay here could be set to the annotated cost of doing issuing
@@ -307,7 +358,47 @@ static void rp_ats_req(RemotePortDevice *dev, struct rp_pkt *pkt)
                              pkt->hdr.flags | RP_PKT_FLAGS_response);
     assert(enclen == pktlen);
 
+    RP_TRACE(RP_TRACE_LVL_INFO, "Remote Port ATS response is generated\r\n")
+    RP_TRACE(RP_TRACE_LVL_INFO, "cmd 0x%" PRIx32 " len: 0x%" PRIx32 " id: 0x%" \
+        PRIx32 " flags: 0x%" PRIx32 " dev: 0x%" PRIx32 "\r\n",
+        be32toh(s->rsp.pkt->hdr.cmd), 
+        be32toh(s->rsp.pkt->hdr.len), 
+        be32toh(s->rsp.pkt->hdr.id), 
+        be32toh(s->rsp.pkt->hdr.flags), 
+        be32toh(s->rsp.pkt->hdr.dev));
+    RP_TRACE(RP_TRACE_LVL_INFO, "timestamp 0x%" PRIx64 " attributes: 0x%" \
+    PRIx64 " addr: 0x%" PRIx64 " len: 0x%" PRIx64 " result: 0x%" PRIx32 "\r\n",
+        be64toh(s->rsp.pkt->ats.timestamp),
+        be64toh(s->rsp.pkt->ats.attributes),
+        be64toh(s->rsp.pkt->ats.addr),
+        be64toh(s->rsp.pkt->ats.len),
+        be32toh(s->rsp.pkt->ats.result));
+
     rp_write(s->rp, (void *)s->rsp.pkt, enclen);
+}
+
+static AddressSpace *bus_iommu_address_space(BusState *iommu_bus,
+                                             uint32_t iommu_id, uint16_t devid)
+{
+    if (iommu_bus && iommu_bus->iommu[iommu_id].iommu_ops) {
+        return iommu_bus->iommu[iommu_id].iommu_ops->get_address_space(
+            iommu_bus, iommu_bus->iommu[iommu_id].iommu_opaque, devid);
+    }
+    return &address_space_memory;
+}
+
+static void rp_ats_init_done(Notifier *notifier, void *data)
+{
+    RemotePortATS *s = container_of(notifier, RemotePortATS, machine_done);
+    AddressSpace *as;
+
+    if (s->rp_stream_id) {
+        as = bus_iommu_address_space(sysbus_get_default(),
+                                     s->iommu_id, s->rp_stream_id);
+        address_space_init(&s->as, as->root, "dma");
+    } else {
+        address_space_init(&s->as, s->mr ? s->mr : get_system_memory(), "dma");
+    }
 }
 
 static void rp_ats_realize(DeviceState *dev, Error **errp)
@@ -315,10 +406,12 @@ static void rp_ats_realize(DeviceState *dev, Error **errp)
     RemotePortATS *s = REMOTE_PORT_ATS(dev);
 
     s->peer = rp_get_peer(s->rp);
-    address_space_init(&s->as, s->mr ? s->mr : get_system_memory(), "ats-as");
 
     s->iommu_notifiers = g_array_new(false, true, sizeof(ATSIOMMUNotifier *));
     s->cache = g_array_new(false, true, sizeof(IOMMUTLBEntry *));
+
+    s->machine_done.notify = rp_ats_init_done;
+    qemu_add_machine_init_done_notifier(&s->machine_done);
 }
 
 static void rp_prop_allow_set_link(const Object *obj, const char *name,
@@ -363,7 +456,9 @@ static void rp_ats_unrealize(DeviceState *dev)
 }
 
 static Property rp_properties[] = {
+    DEFINE_PROP_UINT32("iommu-id", RemotePortATS, iommu_id, 0),
     DEFINE_PROP_UINT32("rp-chan0", RemotePortATS, rp_dev, 0),
+    DEFINE_PROP_UINT32("rp-stream-id", RemotePortATS, rp_stream_id, 0),
 };
 
 static void rp_ats_class_init(ObjectClass *oc, const void *data)

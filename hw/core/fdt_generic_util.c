@@ -1221,6 +1221,16 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
                 fprintf(stderr, "cant set device link for adaptor\n");
                 break;
             }
+
+            if (object_dynamic_cast(dev, TYPE_REMOTE_PORT_MEMORY_SLAVE)) {
+                uint32_t rp_ats_id;
+                rp_ats_id = qemu_fdt_getprop_cell(fdti->fdt, node_path,
+                                                  "remote-port-ats", 0,
+                                                  false, &errp);
+
+                object_property_set_int(OBJECT(dev), "rp-ats-id",
+                                        rp_ats_id, &errp);
+            }
         }
         errp = NULL;
     }

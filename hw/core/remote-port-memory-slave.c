@@ -192,13 +192,38 @@ static AddressSpace *bus_iommu_address_space(BusState *iommu_bus,
     return &address_space_memory;
 }
 
+static void rp_memory_slave_create_ats(RemotePortMemorySlave *s)
+{    
+    Object *tmp_obj;
+
+    /* Create RP ATS dev. */
+    tmp_obj = object_new(TYPE_REMOTE_PORT_ATS);
+    s->rp_ats = REMOTE_PORT_ATS(tmp_obj);
+    object_property_add_child(OBJECT(s), "rp-ats", tmp_obj);
+    object_unref(tmp_obj);
+
+     /* Setup the RP ATS dev. */
+    rp_device_attach(OBJECT(s->rp), OBJECT(s->rp_ats), 0, 
+                     s->rp_ats_id, &error_abort);
+    object_property_set_int(OBJECT(s->rp_ats), "iommu-id", 
+                            s->iommu_id, &error_abort);
+    object_property_set_int(OBJECT(s->rp_ats), "rp-stream-id", 
+                            s->rp_stream_id, &error_abort);           
+    object_property_set_bool(OBJECT(s->rp_ats), "realized", 
+                             true, &error_abort);
+
+    /* Setup the RP Slave dev. */
+    object_property_set_link(OBJECT(s), "rp-ats-cache",
+                             OBJECT(s->rp_ats), &error_abort);
+}
+
 static void rp_memory_slave_init_done(Notifier *notifier, void *data)
 {
     RemotePortMemorySlave *s = container_of(notifier, RemotePortMemorySlave,
                                             machine_done);
     AddressSpace *as;
 
-    if (s->channel_id) {
+    if (s->rp_stream_id) {
         as = bus_iommu_address_space(sysbus_get_default(), s->iommu_id,
                                      s->rp_stream_id);
         address_space_init(&s->as, as->root, "dma");
@@ -212,6 +237,11 @@ static void rp_memory_slave_realize(DeviceState *dev, Error **errp)
     RemotePortMemorySlave *s = REMOTE_PORT_MEMORY_SLAVE(dev);
 
     s->peer = rp_get_peer(s->rp);
+
+    if (s->rp_ats_id > 0) {
+        rp_memory_slave_create_ats(s);
+    }
+
     s->machine_done.notify = rp_memory_slave_init_done;
     qemu_add_machine_init_done_notifier(&s->machine_done);
 }
@@ -260,8 +290,8 @@ static void rp_memory_slave_unrealize(DeviceState *dev)
 
 static Property rp_properties[] = {
     DEFINE_PROP_UINT32("iommu-id", RemotePortMemorySlave, iommu_id, 0),
-    DEFINE_PROP_UINT32("rp-chan0", RemotePortMemorySlave, channel_id, 0),
-    DEFINE_PROP_END_OF_LIST()
+    DEFINE_PROP_UINT32("rp-chan0", RemotePortMemorySlave, rp_stream_id, 0),
+    DEFINE_PROP_UINT32("rp-ats-id", RemotePortMemorySlave, rp_ats_id, 0),
 };
 
 static void rp_memory_slave_class_init(ObjectClass *oc, const void *data)
