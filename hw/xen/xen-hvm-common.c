@@ -894,11 +894,11 @@ err:
     exit(1);
 }
 
-void xen_register_ioreq(XenIOState *state, unsigned int max_cpus,
+int xen_register_ioreq(XenIOState *state, unsigned int max_cpus,
                         uint8_t handle_bufioreq,
                         const MemoryListener *xen_memory_listener)
 {
-    int rc;
+    int rc = -1;
 
     setup_xen_backend_ops();
 
@@ -921,12 +921,13 @@ void xen_register_ioreq(XenIOState *state, unsigned int max_cpus,
     } else {
         warn_report("xen: failed to create ioreq server");
     }
-
+    rc = 0;
     xen_bus_init();
 
-    return;
+    return rc;
 
 err:
     error_report("xen hardware virtual machine backend registration failed");
     exit(1);
+    return rc;
 }
