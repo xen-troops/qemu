@@ -15,6 +15,7 @@
 
 #include "hw/xen/xen_native.h"
 #include "hw/xen/xen_backend_ops.h"
+#include "hw/xen/xen_pvdev.h"
 
 /*
  * If we have new enough libxenctrl then we do not want/need these compat
@@ -285,7 +286,8 @@ static bool libxenstore_create(struct qemu_xs_handle *h, xs_transaction_t t,
                                unsigned int owner, unsigned int domid,
                                unsigned int perms, const char *path)
 {
-    struct xs_permissions perms_list[] = {
+    unsigned int num;
+    struct xs_permissions *tmp, perms_list[] = {
         {
             .id    = owner,
             .perms = XS_PERM_NONE,
@@ -299,6 +301,14 @@ static bool libxenstore_create(struct qemu_xs_handle *h, xs_transaction_t t,
     if (!xs_mkdir(h->xsh, t, path)) {
         return false;
     }
+
+    tmp = xs_get_permissions(h->xsh, 0, path, &num);
+    if (tmp == NULL) {
+        xen_pv_printf(NULL, 0, "xs_get_permissions %s: failed\n", path);
+        return false;
+    }
+    perms_list[0].id = tmp[0].id; /* retain the owner */
+    free(tmp);
 
     return xs_set_permissions(h->xsh, t, path, perms_list,
                               ARRAY_SIZE(perms_list));
