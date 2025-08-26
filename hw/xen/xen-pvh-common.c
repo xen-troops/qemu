@@ -226,10 +226,6 @@ static void xen_pvh_init(MachineState *ms)
 
     /* Non-zero pci-ecam-size enables PCI.  */
     if (s->cfg.pci_ecam.size) {
-        if (s->cfg.pci_ecam.size != 256 * MiB) {
-            error_report("pci-ecam-size only supports values 0 or 0x10000000");
-            exit(EXIT_FAILURE);
-        }
         if (!s->cfg.pci_intx_irq_base) {
             error_report("PCI enabled but pci-intx-irq-base not set");
             exit(EXIT_FAILURE);
