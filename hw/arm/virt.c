@@ -90,6 +90,7 @@
 #include "hw/uefi/var-service-api.h"
 #include "hw/virtio/virtio-md-pci.h"
 #include "hw/virtio/virtio-iommu.h"
+#include "hw/virtio/virtio-mmio.h"
 #include "hw/char/pl011.h"
 #include "hw/cxl/cxl.h"
 #include "hw/cxl/cxl_host.h"
@@ -1179,6 +1180,7 @@ static void create_gpio_devices(const VirtMachineState *vms, int gpio,
 static void create_virtio_devices(const VirtMachineState *vms)
 {
     int i;
+    uint32_t stream_ids[NUM_VIRTIO_TRANSPORTS];
     hwaddr size = vms->memmap[VIRT_MMIO].size;
     MachineState *ms = MACHINE(vms);
 
@@ -1213,8 +1215,11 @@ static void create_virtio_devices(const VirtMachineState *vms)
         int irq = vms->irqmap[VIRT_MMIO] + i;
         hwaddr base = vms->memmap[VIRT_MMIO].base + i * size;
 
-        sysbus_create_simple("virtio-mmio", base,
+        DeviceState* dev = sysbus_create_simple("virtio-mmio", base,
                              qdev_get_gpio_in(vms->gic, irq));
+        
+        VirtIOMMIOProxy *proxy = VIRTIO_MMIO(dev);
+        stream_ids[i] = proxy->stream_id;
     }
 
     /* We add dtb nodes in reverse order so that they appear in the finished
@@ -1239,6 +1244,9 @@ static void create_virtio_devices(const VirtMachineState *vms)
                                GIC_FDT_IRQ_TYPE_SPI, irq,
                                GIC_FDT_IRQ_FLAGS_EDGE_LO_HI);
         qemu_fdt_setprop(ms->fdt, nodename, "dma-coherent", NULL, 0);
+        qemu_fdt_setprop_sized_cells(ms->fdt, nodename, "iommus",
+                                    1, vms->sysbus_virtio_iommu_phandle,
+                                    1, stream_ids[i]);
         g_free(nodename);
     }
 }
