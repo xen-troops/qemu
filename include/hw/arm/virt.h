@@ -64,6 +64,7 @@ enum {
     VIRT_GIC_ITS,
     VIRT_GIC_REDIST,
     VIRT_SMMU,
+    VIRT_SMMU_SYSBUS_VIRTIO,
     VIRT_UART0,
     VIRT_MMIO,
     VIRT_RTC,
@@ -171,6 +172,7 @@ struct VirtMachineState {
     uint32_t gic_phandle;
     uint32_t msi_phandle;
     uint32_t iommu_phandle;
+    uint32_t sysbus_virtio_iommu_phandle;
     int psci_conduit;
     uint8_t virtio_transports;
     hwaddr highest_gpa;
@@ -184,6 +186,7 @@ struct VirtMachineState {
     bool ns_el2_virt_timer_irq;
     CXLState cxl_devices_state;
     bool legacy_smmuv3_present;
+    bool system_smmuv3_present;
     MemoryRegion *sysmem;
     MemoryRegion *secure_sysmem;
     bool pci_preserve_config;
