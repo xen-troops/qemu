@@ -190,11 +190,12 @@ static const MemMapEntry base_memmap[] = {
     [VIRT_GPIO] =               { 0x09030000, 0x00001000 },
     [VIRT_UART1] =              { 0x09040000, 0x00001000 },
     [VIRT_SMMU] =               { 0x09050000, SMMU_IO_LEN },
-    [VIRT_PCDIMM_ACPI] =        { 0x09070000, MEMORY_HOTPLUG_IO_LEN },
-    [VIRT_ACPI_GED] =           { 0x09080000, ACPI_GED_EVT_SEL_LEN },
-    [VIRT_NVDIMM_ACPI] =        { 0x09090000, NVDIMM_ACPI_IO_LEN},
-    [VIRT_PVTIME] =             { 0x090a0000, 0x00010000 },
-    [VIRT_SECURE_GPIO] =        { 0x090b0000, 0x00001000 },
+    [VIRT_SMMU_SYSBUS_VIRTIO] = { 0x09070000, SMMU_IO_LEN },
+    [VIRT_PCDIMM_ACPI] =        { 0x09090000, MEMORY_HOTPLUG_IO_LEN },
+    [VIRT_ACPI_GED] =           { 0x090A0000, ACPI_GED_EVT_SEL_LEN },
+    [VIRT_NVDIMM_ACPI] =        { 0x090B0000, NVDIMM_ACPI_IO_LEN},
+    [VIRT_PVTIME] =             { 0x090C0000, 0x00010000 },
+    [VIRT_SECURE_GPIO] =        { 0x090D0000, 0x00001000 },
     [VIRT_ACPI_PCIHP] =         { 0x090c0000, ACPI_PCIHP_SIZE },
     [VIRT_MMIO] =               { 0x0a000000, 0x00000200 },
     /* ...repeating for a total of NUM_VIRTIO_TRANSPORTS, each of that size */
@@ -250,6 +251,7 @@ static const int a15irqmap[] = {
     [VIRT_MMIO] = 16, /* ...to 16 + NUM_VIRTIO_TRANSPORTS - 1 */
     [VIRT_GIC_V2M] = 48, /* ...to 48 + NUM_GICV2M_SPIS - 1 */
     [VIRT_SMMU] = 74,    /* ...to 74 + NUM_SMMU_IRQS - 1 */
+    [VIRT_SMMU_SYSBUS_VIRTIO] = 78, /* ...to 78 + NUM_SMMU_IRQS - 1 */
     [VIRT_PLATFORM_BUS] = 112, /* ...to 112 + PLATFORM_BUS_NUM_IRQS -1 */
 };
 
@@ -1553,6 +1555,60 @@ static void create_smmu(const VirtMachineState *vms, PCIBus *bus)
     create_smmuv3_dt_bindings(vms, base, size, irq);
 }
 
+static void create_smmu_sysbus_virtio(VirtMachineState *vms)
+{
+    VirtMachineClass *vmc = VIRT_MACHINE_GET_CLASS(vms);
+    char *node;
+    const char compat[] = "arm,smmu-v3";
+    int irq =  vms->irqmap[VIRT_SMMU_SYSBUS_VIRTIO];
+    int i;
+    hwaddr base = vms->memmap[VIRT_SMMU_SYSBUS_VIRTIO].base;
+    hwaddr size = vms->memmap[VIRT_SMMU_SYSBUS_VIRTIO].size;
+    const char irq_names[] = "eventq\0priq\0cmdq-sync\0gerror";
+    DeviceState *dev;
+    MachineState *ms = MACHINE(vms);
+
+    vms->sysbus_virtio_iommu_phandle = qemu_fdt_alloc_phandle(ms->fdt);
+
+    dev = qdev_new(TYPE_ARM_SMMUV3);
+
+    if (!vmc->no_nested_smmu) {
+        object_property_set_str(OBJECT(dev), "stage", "nested", &error_fatal);
+    }
+    object_property_set_link(OBJECT(dev), "generic-bus", 
+                             OBJECT(sysbus_get_default()), &error_abort);
+    object_property_set_int(OBJECT(dev), "generic-bus-iommu-id", 1u, &error_abort);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
+    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
+    for (i = 0; i < NUM_SMMU_IRQS; i++) {
+        sysbus_connect_irq(SYS_BUS_DEVICE(dev), i,
+                           qdev_get_gpio_in(vms->gic, irq + i));
+    }
+
+    node = g_strdup_printf("/smmuv3@%" PRIx64, base);
+    qemu_fdt_add_subnode(ms->fdt, node);
+    qemu_fdt_setprop(ms->fdt, node, "compatible", compat, sizeof(compat));
+    qemu_fdt_setprop_sized_cells(ms->fdt, node, "reg", 2, base, 2, size);
+
+    qemu_fdt_setprop_cells(ms->fdt, node, "interrupts",
+            GIC_FDT_IRQ_TYPE_SPI, irq    , GIC_FDT_IRQ_FLAGS_EDGE_LO_HI,
+            GIC_FDT_IRQ_TYPE_SPI, irq + 1, GIC_FDT_IRQ_FLAGS_EDGE_LO_HI,
+            GIC_FDT_IRQ_TYPE_SPI, irq + 2, GIC_FDT_IRQ_FLAGS_EDGE_LO_HI,
+            GIC_FDT_IRQ_TYPE_SPI, irq + 3, GIC_FDT_IRQ_FLAGS_EDGE_LO_HI);
+
+    qemu_fdt_setprop(ms->fdt, node, "interrupt-names", irq_names,
+                     sizeof(irq_names));
+
+    qemu_fdt_setprop(ms->fdt, node, "dma-coherent", NULL, 0);
+
+    qemu_fdt_setprop_cell(ms->fdt, node, "#iommu-cells", 1);
+
+    qemu_fdt_setprop_cell(ms->fdt, node, "phandle", vms->sysbus_virtio_iommu_phandle);
+
+    g_free(node);
+    vms->system_smmuv3_present = true;
+}
+
 static void create_virtio_iommu_dt_bindings(VirtMachineState *vms)
 {
     const char compat[] = "virtio,pci-iommu\0pci1af4,1057";
@@ -2567,6 +2623,8 @@ static void machvirt_init(MachineState *machine)
     create_pcie(vms);
     create_cxl_host_reg_region(vms);
 
+    create_smmu_sysbus_virtio(vms);
+
     if (aarch64 && firmware_loaded && virt_is_acpi_enabled(vms)) {
         vms->acpi_dev = create_acpi_ged(vms);
         vms->generic_error_notifier.notify = virt_generic_error_req;
@@ -3161,7 +3219,8 @@ static void virt_machine_device_pre_plug_cb(HotplugHandler *hotplug_dev,
         char *resv_prop_str;
 
         if (vms->iommu != VIRT_IOMMU_NONE) {
-            error_setg(errp, "virt machine does not support multiple IOMMUs");
+            error_setg(errp,
+                       "virt machine does not support multiple PCI IOMMUs");
             return;
         }
 
@@ -3192,7 +3251,8 @@ static void virt_machine_device_pre_plug_cb(HotplugHandler *hotplug_dev,
         qdev_prop_set_array(dev, "reserved-regions", reserved_regions);
         g_free(resv_prop_str);
     } else if (object_dynamic_cast(OBJECT(dev), TYPE_ARM_SMMUV3)) {
-        if (vms->legacy_smmuv3_present || vms->iommu == VIRT_IOMMU_VIRTIO) {
+        if ((vms->system_smmuv3_present && vms->legacy_smmuv3_present) ||
+            vms->iommu == VIRT_IOMMU_VIRTIO) {
             error_setg(errp, "virt machine already has %s set. "
                        "Doesn't support incompatible iommus",
                        (vms->legacy_smmuv3_present) ?

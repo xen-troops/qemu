@@ -367,6 +367,38 @@ typedef QTAILQ_HEAD(, BusChild) BusChildHead;
 typedef QLIST_ENTRY(BusState) BusStateEntry;
 
 /**
+ * struct BusIOMMUOps: callbacks structure for specific IOMMU handlers
+ * of a bus
+ */
+typedef struct BusIOMMUOps {
+    /**
+     * @get_address_space: get the address space for a set of devices
+     * on a bus.
+     *
+     * Mandatory callback which returns a pointer to an #AddressSpace
+     *
+     * @bus: the #Bus being accessed.
+     *
+     * @opaque: the data passed to bus_setup_iommu().
+     *
+     * @devif: device identification number
+     */
+    AddressSpace * (*get_address_space)(BusState *bus, void *opaque, int devid);
+} BusIOMMUOps;
+
+/**
+ * struct BusIOMMU:
+ * @iommu_ops: IOMMU Bus operations
+ * @iommu_opaque: opaque data passed to IOMMU operation callbacks
+ * @used: Bus IOMMU used
+ */
+struct BusIOMMU {
+    const BusIOMMUOps *iommu_ops;
+    void *iommu_opaque;
+    bool used;
+};
+
+/**
  * struct BusState:
  * @obj: parent object
  * @parent: parent Device
@@ -376,6 +408,7 @@ typedef QLIST_ENTRY(BusState) BusStateEntry;
  * @realized: is the bus itself realized?
  * @full: is the bus full?
  * @num_children: current number of child buses
+ * @iommu: current IOMMUs
  */
 struct BusState {
     /* private: */
@@ -388,6 +421,7 @@ struct BusState {
     bool realized;
     bool full;
     int num_children;
+    BusIOMMU iommu[2];
 
     /**
      * @children: an RCU protected QTAILQ, thus readers must use RCU
@@ -929,6 +963,19 @@ bool device_is_in_reset(DeviceState *dev);
  * Return: true if the bus @bus is currently being reset.
  */
 bool bus_is_in_reset(BusState *bus);
+
+/**
+ * bus_setup_iommu() - Set up IOMMU operations for a bus
+ * @bus: the bus to configure
+ * @ops: IOMMU operations structure containing callback functions
+ * @iommu_id: IOMMU ID
+ * @opaque: opaque data passed to IOMMU operation callbacks
+ *
+ * Configure IOMMU operations for the specified bus. The ops structure
+ * must contain at least the get_address_space callback. The opaque
+ * parameter is passed through to the operation callbacks.
+ */
+void bus_setup_iommu(BusState *bus, uint8_t iommu_id, const BusIOMMUOps *ops, void *opaque);
 
 /* This should go away once we get rid of the NULL bus hack */
 BusState *sysbus_get_default(void);

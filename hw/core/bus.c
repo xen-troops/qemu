@@ -80,6 +80,27 @@ bool bus_is_in_reset(BusState *bus)
     return resettable_is_in_reset(OBJECT(bus));
 }
 
+void bus_setup_iommu(BusState *bus, uint8_t iommu_id, const BusIOMMUOps *ops, void *opaque)
+{
+    /*
+     * If called, bus_setup_iommu() should provide a minimum set of
+     * useful callbacks for the bus.
+     */
+    assert(ops);
+    assert(ops->get_address_space);
+    /*
+     * Provided IOMMU index shall be in range of valid values.
+     */
+    assert(iommu_id < (sizeof(bus->iommu) / sizeof(bus->iommu[0])));
+    /*
+     * Allocated entry cannot be used!
+     */
+    assert(!bus->iommu[iommu_id].used);
+
+    bus->iommu[iommu_id].iommu_ops = ops;
+    bus->iommu[iommu_id].iommu_opaque = opaque;
+}
+
 static ResettableState *bus_get_reset_state(Object *obj)
 {
     BusState *bus = BUS(obj);
@@ -216,6 +237,10 @@ static void bus_set_realized(Object *obj, bool value, Error **errp)
 static void qbus_initfn(Object *obj)
 {
     BusState *bus = BUS(obj);
+
+    for (int i = 0u; i < (sizeof(bus->iommu) / sizeof(bus->iommu[0])); i++) {
+        bus->iommu[i].used = false;
+    }
 
     QTAILQ_INIT(&bus->children);
     object_property_add_link(obj, QDEV_HOTPLUG_HANDLER_PROPERTY,
