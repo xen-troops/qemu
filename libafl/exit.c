@@ -112,10 +112,35 @@ void libafl_exit_request_internal(CPUState* cpu, uint64_t pc,
     expected_exit = true;
 }
 
+extern int  __xencov_available __attribute__((weak));
+extern char __xencov_data_buf[] __attribute__((weak));
+extern unsigned int __xencov_data_size __attribute__((weak));
+#define LIBAFL_QEMU_COMMAND_XENCOV_DATA 1000
+
 void libafl_exit_request_custom_insn(CPUState* cpu, target_ulong pc,
                                      enum libafl_custom_insn_kind kind)
 {
     last_exit_reason.kind = CUSTOM_INSN;
+    uint64_t reg;
+
+    libafl_qemu_read_reg(cpu, 0, (uint8_t*)&reg);
+    if (reg == LIBAFL_QEMU_COMMAND_XENCOV_DATA) {
+        uint64_t ptr;
+        uint64_t size;
+
+        if (!__xencov_available)
+            return;
+
+        libafl_qemu_read_reg(cpu, 1, (uint8_t*)&ptr);
+        libafl_qemu_read_reg(cpu, 2, (uint8_t*)&size);
+
+        if (size > __xencov_data_size)
+            size = __xencov_data_size;
+
+        cpu_memory_rw_debug(cpu, ptr, __xencov_data_buf, size, false);
+
+        return;
+    }
 
     prepare_qemu_exit(cpu, pc);
 }
