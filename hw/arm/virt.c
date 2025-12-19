@@ -1569,8 +1569,9 @@ static void create_smmu_sysbus(VirtMachineState *vms)
     if (!vmc->no_nested_smmu) {
         object_property_set_str(OBJECT(dev), "stage", "nested", &error_fatal);
     }
-    object_property_set_link(OBJECT(dev), "generic-primary-bus",
+    object_property_set_link(OBJECT(dev), "generic-bus",
                              OBJECT(sysbus_get_default()), &error_abort);
+    object_property_set_int(OBJECT(dev), "generic-bus-iommu-id", 0u, &error_abort);
     object_property_set_link(OBJECT(dev), "memory", OBJECT(vms->sysmem),
                              &error_abort);
     object_property_set_link(OBJECT(dev), "secure-memory",
