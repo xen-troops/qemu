@@ -57,6 +57,8 @@ bool is_mlock_on_fault(MlockState);
 
 extern MlockState mlock_state;
 
+extern const char *machine_path;
+
 #define MAX_OPTION_ROMS 16
 typedef struct QEMUOptionRom {
     const char *name;
