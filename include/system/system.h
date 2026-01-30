@@ -59,6 +59,8 @@ extern MlockState mlock_state;
 
 extern const char *machine_path;
 
+extern uint64_t global_sync_quantum;
+
 #define MAX_OPTION_ROMS 16
 typedef struct QEMUOptionRom {
     const char *name;

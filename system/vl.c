@@ -182,6 +182,7 @@ static QemuPluginList plugin_list = QTAILQ_HEAD_INITIALIZER(plugin_list);
 static BlockdevOptionsQueue bdo_queue = QSIMPLEQ_HEAD_INITIALIZER(bdo_queue);
 static bool nographic = false;
 static int mem_prealloc; /* force preallocation of physical target memory */
+uint64_t global_sync_quantum;
 const char *machine_path;
 static const char *vga_model = NULL;
 static DisplayOptions dpy;
@@ -3128,6 +3129,13 @@ void qemu_init(int argc, char **argv)
                 break;
             case QEMU_OPTION_mem_prealloc:
                 mem_prealloc = 1;
+                break;
+            case QEMU_OPTION_sync_quantum:
+                if (qemu_strtou64(optarg, &optarg, 10,
+                                  &global_sync_quantum)) {
+                    error_report("failed to parse sync_quantum");
+                    exit(1);
+                }
                 break;
             case QEMU_OPTION_machine_path:
                 machine_path = optarg;
