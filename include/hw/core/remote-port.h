@@ -151,4 +151,6 @@ void rp_process(RemotePort *s);
 
 ssize_t rp_write(RemotePort *s, const void *buf, size_t count);
 
+struct rp_peer_state *rp_get_peer(RemotePort *s);
+
 #endif
