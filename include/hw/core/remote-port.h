@@ -56,8 +56,24 @@ typedef struct RemotePortDeviceClass {
 struct RemotePort {
     DeviceState parent;
 
+    union {
+       int pipes[2];
+       struct {
+           int read;
+           int write;
+       } pipe;
+    } event;
+    Chardev *chrdev;
+    CharFrontend chr;
     bool finalizing;
 
+    char *chardesc;
+    char *chrdev_id;
+
+    const char *prefix;
+    const char *remote_prefix;
+
+    uint32_t current_id;
     bool reset_done;
 
 #define REMOTE_PORT_MAX_DEVS 1024
