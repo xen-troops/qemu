@@ -74,6 +74,9 @@ struct RemotePort {
     char *chrdev_id;
     struct rp_peer_state peer;
 
+    QemuMutex rsp_mutex;
+    QemuCond progress_cond;
+
 #define RX_QUEUE_SIZE 1024
     struct {
         /* This array must be sized minimum 2 and always a power of 2.  */
@@ -99,6 +102,8 @@ struct RemotePort {
 #define REMOTE_PORT_MAX_DEVS 1024
     RemotePortDevice *devs[REMOTE_PORT_MAX_DEVS];
 };
+
+void rp_process(RemotePort *s);
 
 ssize_t rp_write(RemotePort *s, const void *buf, size_t count);
 
