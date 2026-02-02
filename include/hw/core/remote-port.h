@@ -56,6 +56,7 @@ typedef struct RemotePortDeviceClass {
 struct RemotePort {
     DeviceState parent;
 
+    QemuThread thread;
     union {
        int pipes[2];
        struct {
@@ -66,9 +67,28 @@ struct RemotePort {
     Chardev *chrdev;
     CharFrontend chr;
     bool finalizing;
+    /* To serialize writes to fd.  */
+    QemuMutex write_mutex;
 
     char *chardesc;
     char *chrdev_id;
+    struct rp_peer_state peer;
+
+#define RX_QUEUE_SIZE 1024
+    struct {
+        /* This array must be sized minimum 2 and always a power of 2.  */
+        RemotePortDynPkt pkt[RX_QUEUE_SIZE];
+        bool inuse[RX_QUEUE_SIZE];
+        QemuSemaphore sem;
+        unsigned int wpos;
+        unsigned int rpos;
+    } rx_queue;
+
+    /*
+     * rsp holds responses for the remote side.
+     * Used by the slave.
+     */
+    RemotePortDynPkt rsp;
 
     const char *prefix;
     const char *remote_prefix;
@@ -79,5 +99,7 @@ struct RemotePort {
 #define REMOTE_PORT_MAX_DEVS 1024
     RemotePortDevice *devs[REMOTE_PORT_MAX_DEVS];
 };
+
+ssize_t rp_write(RemotePort *s, const void *buf, size_t count);
 
 #endif
