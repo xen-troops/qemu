@@ -61,6 +61,9 @@
     } \
 } while (0)
 
+#include "hw/core/remote-port-memory-slave.h"
+#include "hw/core/remote-port.h"
+
 #define PROP_ARRAY_LEN_PREFIX "len-"
 
 /* FIXME: wrap direct calls into libfdt */
@@ -1097,6 +1100,20 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
     }
     fdt_init_set_opaque(fdti, node_path, dev);
 
+    /*
+     * Set the default sync-quantum based on the global one. Node properties
+     * in the dtb can later override this value.
+     */
+    if (global_sync_quantum) {
+        ObjectProperty *p;
+
+        p = object_property_find(OBJECT(dev), "sync-quantum");
+        if (p) {
+            object_property_set_int(OBJECT(dev), "sync-quantum",
+                                    global_sync_quantum, &errp);
+        }
+    }
+
     props = qemu_devtree_get_props(fdti->fdt, node_path);
     for (prop = props; prop->name; prop++) {
         const char *propname = trim_vendor(prop->name);
@@ -1142,25 +1159,99 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         fdt_init_qdev_scalar_prop(OBJECT(dev), p, fdti, node_path, prop);
     }
 
+    if (object_dynamic_cast(dev, TYPE_REMOTE_PORT_DEVICE)) {
+        for (i = 0; ; ++i) {
+            char adaptor_node_path[DT_PATH_LENGTH];
+            uint32_t adaptor_phandle, chan;
+            DeviceState *adaptor;
+            char *name;
+
+            adaptor_phandle = qemu_fdt_getprop_cell(fdti->fdt, node_path,
+                                                    "remote-ports",
+                                                    2 * i, false, &errp);
+            if (errp) {
+                fprintf(stderr, "cant get phandle from \"remote-ports\" "
+                            "property\n");
+                break;
+            }
+            if (qemu_devtree_get_node_by_phandle(fdti->fdt, adaptor_node_path,
+                                                 adaptor_phandle)) {
+                fprintf(stderr, "cant get node from phandle\n");
+                break;
+            }
+            while (!fdt_init_has_opaque(fdti, adaptor_node_path)) {
+                fdt_init_yield(fdti);
+            }
+            adaptor = DEVICE(fdt_init_get_opaque(fdti, adaptor_node_path));
+            name = g_strdup_printf("rp-adaptor%" PRId32, i);
+            object_property_set_link(OBJECT(dev), name, OBJECT(adaptor), &errp);
+            fprintf(stderr, "connecting RP to adaptor %s channel %d",
+                        object_get_canonical_path(OBJECT(adaptor)), i);
+            g_free(name);
+            if (errp) {
+                fprintf(stderr, "cant set adaptor link for device property\n");
+                break;
+            }
+
+            chan = qemu_fdt_getprop_cell(fdti->fdt, node_path, "remote-ports",
+                                         2 * i + 1, false, &errp);
+            if (errp) {
+                fprintf(stderr, "cant get channel from \"remote-ports\" "
+                            "property\n");
+                break;
+            }
+
+            name = g_strdup_printf("rp-chan%" PRId32, i);
+            object_property_set_int(OBJECT(dev), name, chan, &errp);
+            /*
+             * Not critical - device has right to not care about channel
+             * numbers if its a pure slave (only responses).
+             */
+            if (errp) {
+                fprintf(stderr, "cant set %s property %s\n", name,
+                        error_get_pretty(errp));
+                errp = NULL;
+            }
+            g_free(name);
+
+            name = g_strdup_printf("remote-port-dev%d", chan);
+            object_property_set_link(OBJECT(adaptor), name, OBJECT(dev), &errp);
+            g_free(name);
+            if (errp) {
+                fprintf(stderr, "cant set device link for adaptor\n");
+                break;
+            }
+        }
+        errp = NULL;
+    }
+
     if (object_dynamic_cast(dev, TYPE_DEVICE)) {
+        DeviceClass *dc = DEVICE_GET_CLASS(dev);
         const char *short_name = qemu_devtree_get_node_name(fdti->fdt,
                                                             node_path);
 
-        /* Connect chardev if we can */
-        if (serial_hd(fdt_serial_ports)) {
-            Chardev *value = (Chardev *) serial_hd(fdt_serial_ports);
-            char *chardev;
+        /*
+         * We don't want to connect remote port chardev's to the user facing
+         * serial devices.
+         */
+        if (!object_dynamic_cast(dev, TYPE_REMOTE_PORT)) {
+            /* Connect chardev if we can */
+            if (serial_hd(fdt_serial_ports)) {
+                Chardev *value = (Chardev *) serial_hd(fdt_serial_ports);
+                char *chardev;
 
-            /* Check if the device already has a chardev.  */
-            chardev = object_property_get_str(dev, "chardev", &errp);
-            if (!errp && !strcmp(chardev, "")) {
-                object_property_set_str(dev, "chardev", value->label, &errp);
-                if (!errp) {
-                    /* It worked, the device is a charecter device */
-                    fdt_serial_ports++;
+                /* Check if the device already has a chardev.  */
+                chardev = object_property_get_str(dev, "chardev", &errp);
+                if (!errp && !strcmp(chardev, "")) {
+                    object_property_set_str(dev, "chardev", value->label,
+                                            &errp);
+                    if (!errp) {
+                        /* It worked, the device is a charecter device */
+                        fdt_serial_ports++;
+                    }
                 }
+                errp = NULL;
             }
-            errp = NULL;
         }
 
         /* Regular TYPE_DEVICE houskeeping */
@@ -1176,6 +1267,9 @@ static int fdt_init_qdev(char *node_path, FDTMachineInfo *fdti, char *compat)
         } else {
             object_property_set_bool(OBJECT(dev), "realized", true,
                                      &error_fatal);
+            if (dc->legacy_reset) {
+                qemu_register_reset((void (*)(void *))dc->legacy_reset, dev);
+            }
         }
     }
 
