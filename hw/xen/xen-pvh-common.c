@@ -18,6 +18,7 @@
 #include "system/xen.h"
 #include "hw/xen/xen-pvh-common.h"
 #include "trace.h"
+#include "exec/ramblock.h"
 
 static const MemoryListener xen_memory_listener = {
     .region_add = xen_region_add,
@@ -61,6 +62,7 @@ static void xen_pvh_init_ram(XenPVHMachineState *s,
     /* Setup support for grants.  */
     memory_region_init_ram(&xen_grants, NULL, "xen.grants", block_len,
                            &error_fatal);
+    xen_grants.ram_block->host = (void *)XEN_GRANT_ADDR_OFF;
     memory_region_add_subregion(sysmem, XEN_GRANT_ADDR_OFF, &xen_grants);
 }
 
