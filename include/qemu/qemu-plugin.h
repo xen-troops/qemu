@@ -966,6 +966,19 @@ bool qemu_plugin_read_memory_paddr(uint64_t addr,
                                    GByteArray *data, size_t len);
 
 /**
+ * qemu_plugin_translate_vaddr() - translate vaddr to paddr for current CPU
+ *
+ * @vaddr: A virtual address to translate from
+ * @paddr: Physical address will be stored here
+ *
+ * TODO: Add function documentation
+ *
+ * Returns true on success and false on failure.
+ */
+QEMU_PLUGIN_API
+bool qemu_plugin_translate_vaddr(uint64_t vaddr, uint64_t *paddr);
+
+/**
  * qemu_plugin_read_register() - read register for current vCPU
  *
  * @handle: a @qemu_plugin_reg_handle handle

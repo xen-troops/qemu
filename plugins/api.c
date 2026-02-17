@@ -477,6 +477,20 @@ bool qemu_plugin_read_memory_paddr(uint64_t addr, GByteArray *data, size_t len)
     return true;
 }
 
+bool qemu_plugin_translate_vaddr(uint64_t addr, uint64_t *paddr)
+{
+    g_assert(current_cpu);
+
+    hwaddr result = cpu_get_phys_page_debug(current_cpu, addr & TARGET_PAGE_MASK);
+
+    if (result == -1 || !paddr)
+        return false;
+
+    *paddr = result + (addr & ~ TARGET_PAGE_MASK);
+
+    return true;
+}
+
 int qemu_plugin_read_register(struct qemu_plugin_register *reg, GByteArray *buf)
 {
     g_assert(current_cpu);
