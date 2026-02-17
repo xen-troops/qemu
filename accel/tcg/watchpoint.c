@@ -22,6 +22,7 @@
 #include "exec/breakpoint.h"
 #include "exec/cpu-interrupt.h"
 #include "exec/page-protection.h"
+#include "exec/memopidx.h"
 #include "exec/translation-block.h"
 #include "system/tcg.h"
 #include "system/replay.h"
@@ -109,6 +110,17 @@ void cpu_check_watchpoint(CPUState *cpu, vaddr addr, vaddr len,
                  * in a reverse debugging operation.
                  */
                 replay_breakpoint();
+                return;
+            }
+
+            if (wp->plugin_cb) {
+                qemu_plugin_meminfo_t meminfo = 0;
+                MemOp memop = 0;
+
+                meminfo = make_memop_idx(memop, 0);
+
+                wp->plugin_cb(cpu->cpu_index, meminfo, MAX(addr, wp->vaddr), NULL);
+
                 return;
             }
 

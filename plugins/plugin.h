@@ -109,6 +109,14 @@ void plugin_register_vcpu_mem_cb(GArray **arr,
                                  enum qemu_plugin_mem_rw rw,
                                  void *udata);
 
+
+void plugin_register_vcpu_mem_cb_range(uint64_t start_va,
+                                       uint64_t size,
+                                       qemu_plugin_vcpu_mem_cb_t cb,
+                                       enum qemu_plugin_cb_flags flags,
+                                       enum qemu_plugin_mem_rw rw,
+                                       void *userdata);
+
 void exec_inline_op(enum plugin_dyn_cb_type type,
                     struct qemu_plugin_inline_cb *cb,
                     int cpu_index);

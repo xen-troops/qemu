@@ -178,6 +178,17 @@ void qemu_plugin_register_vcpu_mem_cb(struct qemu_plugin_insn *insn,
     plugin_register_vcpu_mem_cb(&insn->mem_cbs, cb, flags, rw, udata);
 }
 
+void qemu_plugin_register_vcpu_mem_cb_range(uint64_t start_va,
+                                            uint64_t size,
+                                            qemu_plugin_vcpu_mem_cb_t cb,
+                                            enum qemu_plugin_cb_flags flags,
+                                            enum qemu_plugin_mem_rw rw,
+                                            void *userdata)
+{
+    plugin_register_vcpu_mem_cb_range(start_va, size, cb, flags, rw, userdata);
+
+}
+
 void qemu_plugin_register_vcpu_mem_inline_per_vcpu(
     struct qemu_plugin_insn *insn,
     enum qemu_plugin_mem_rw rw,

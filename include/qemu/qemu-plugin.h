@@ -683,6 +683,34 @@ void qemu_plugin_register_vcpu_mem_cb(struct qemu_plugin_insn *insn,
                                       void *userdata);
 
 /**
+ * qemu_plugin_register_vcpu_mem_cb_range() - register memory access callback based on VA range
+ * @start_va: starting addresss of the watched range
+ * @size: size of the watched range
+ * @cb: callback of type qemu_plugin_vcpu_mem_cb_t
+ * @flags: (currently unused) callback flags
+ * @rw: monitor reads, writes or both
+ * @userdata: opaque pointer for userdata
+ *
+ * This registers a full callback for every memory access in the
+ * specified range.
+ *
+ * The callback reports the vCPU the access took place on, the virtual
+ * address of the access and a handle for further queries. The user
+ * can attach some userdata to the callback for additional purposes.
+ *
+ * Other execution threads will continue to execute during the
+ * callback so the plugin is responsible for ensuring it doesn't get
+ * confused by making appropriate use of locking if required.
+ */
+QEMU_PLUGIN_API
+void qemu_plugin_register_vcpu_mem_cb_range(uint64_t start_va,
+                                            uint64_t size,
+                                            qemu_plugin_vcpu_mem_cb_t cb,
+                                            enum qemu_plugin_cb_flags flags,
+                                            enum qemu_plugin_mem_rw rw,
+                                            void *userdata);
+
+/**
  * qemu_plugin_register_vcpu_mem_inline_per_vcpu() - inline op for mem access
  * @insn: handle for instruction to instrument
  * @rw: apply to reads, writes or both

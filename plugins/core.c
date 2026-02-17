@@ -19,6 +19,7 @@
 #include "qemu/rcu_queue.h"
 #include "qemu/rcu.h"
 #include "exec/tb-flush.h"
+#include "exec/watchpoint.h"
 #include "tcg/tcg-op-common.h"
 #include "plugin.h"
 
@@ -456,6 +457,21 @@ void plugin_register_vcpu_mem_cb(GArray **arr,
     dyn_cb->type = PLUGIN_CB_MEM_REGULAR;
     dyn_cb->regular = regular_cb;
 }
+
+void plugin_register_vcpu_mem_cb_range(uint64_t start_va,
+                                       uint64_t size,
+                                       qemu_plugin_vcpu_mem_cb_t cb,
+                                       enum qemu_plugin_cb_flags flags,
+                                       enum qemu_plugin_mem_rw rw,
+                                       void *userdata)
+{
+    CPUWatchpoint *watchpoint;
+
+    cpu_watchpoint_insert(current_cpu, start_va, size, BP_MEM_WRITE, &watchpoint);
+
+    watchpoint->plugin_cb = cb;
+}
+
 
 /*
  * Disable CFI checks.

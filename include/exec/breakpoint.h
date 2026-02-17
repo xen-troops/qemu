@@ -8,6 +8,7 @@
 #ifndef EXEC_BREAKPOINT_H
 #define EXEC_BREAKPOINT_H
 
+#include "qemu/qemu-plugin.h"
 #include "qemu/queue.h"
 #include "exec/vaddr.h"
 #include "exec/memattrs.h"
@@ -24,6 +25,7 @@ typedef struct CPUWatchpoint {
     vaddr hitaddr;
     MemTxAttrs hitattrs;
     int flags; /* BP_* */
+    qemu_plugin_vcpu_mem_cb_t plugin_cb;
     QTAILQ_ENTRY(CPUWatchpoint) entry;
 } CPUWatchpoint;
 
