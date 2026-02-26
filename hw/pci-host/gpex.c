@@ -97,7 +97,7 @@ static void gpex_host_realize(DeviceState *dev, Error **errp)
 
     s->irq = g_malloc0_n(s->num_irqs, sizeof(*s->irq));
 
-    pcie_host_mmcfg_init(pex, PCIE_MMCFG_SIZE_MAX);
+    pcie_host_mmcfg_init(pex, PCIE_MMCFG_SIZE_MAX/2);
     sysbus_init_mmio(sbd, &pex->mmio);
 
     /*
