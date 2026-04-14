@@ -29,6 +29,8 @@ static char header[] = "DRCOV VERSION: 2\n"
 
 static FILE *fp;
 static const char *file_name = "file.drcov.trace";
+static const char *bin_path;
+static uint64_t start_code, end_code, entry_addr;
 static GMutex lock;
 
 typedef struct {
@@ -44,12 +46,8 @@ static GPtrArray *blocks;
 static void printf_header(unsigned long count)
 {
     fprintf(fp, "%s", header);
-    const char *path = qemu_plugin_path_to_binary();
-    uint64_t start_code = qemu_plugin_start_code();
-    uint64_t end_code = qemu_plugin_end_code();
-    uint64_t entry = qemu_plugin_entry_code();
     fprintf(fp, "0, 0x%" PRIx64 ", 0x%" PRIx64 ", 0x%" PRIx64 ", %s\n",
-            start_code, end_code, entry, path);
+            start_code, end_code, entry_addr, bin_path);
     fprintf(fp, "BB Table: %ld bbs\n", count);
 }
 
@@ -122,36 +120,64 @@ static void vcpu_tb_exec(unsigned int cpu_index, void *udata)
 static void vcpu_tb_trans(qemu_plugin_id_t id, struct qemu_plugin_tb *tb)
 {
     uint64_t pc = qemu_plugin_tb_vaddr(tb);
-    size_t n = qemu_plugin_tb_n_insns(tb);
 
-    g_mutex_lock(&lock);
+    if (pc >= start_code && pc < end_code) {
+        size_t n = qemu_plugin_tb_n_insns(tb);
 
-    bb_entry_t *bb = g_new0(bb_entry_t, 1);
-    for (int i = 0; i < n; i++) {
-        bb->size += qemu_plugin_insn_size(qemu_plugin_tb_get_insn(tb, i));
+        g_mutex_lock(&lock);
+
+        bb_entry_t *bb = g_new0(bb_entry_t, 1);
+        for (int i = 0; i < n; i++) {
+            bb->size += qemu_plugin_insn_size(qemu_plugin_tb_get_insn(tb, i));
+        }
+
+        bb->start = pc - start_code;
+        bb->mod_id = 0;
+        bb->exec = false;
+        g_ptr_array_add(blocks, bb);
+
+        g_mutex_unlock(&lock);
+
+        qemu_plugin_register_vcpu_tb_exec_cb(tb, vcpu_tb_exec,
+                                             QEMU_PLUGIN_CB_NO_REGS,
+                                             (void *)bb);
     }
-
-    bb->start = pc;
-    bb->mod_id = 0;
-    bb->exec = false;
-    g_ptr_array_add(blocks, bb);
-
-    g_mutex_unlock(&lock);
-    qemu_plugin_register_vcpu_tb_exec_cb(tb, vcpu_tb_exec,
-                                         QEMU_PLUGIN_CB_NO_REGS,
-                                         (void *)bb);
-
 }
 
 QEMU_PLUGIN_EXPORT
 int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info,
                         int argc, char **argv)
 {
+    bin_path = qemu_plugin_path_to_binary();
+    start_code = qemu_plugin_start_code();
+    end_code = qemu_plugin_end_code();
+    entry_addr = qemu_plugin_entry_code();
+
     for (int i = 0; i < argc; i++) {
         g_auto(GStrv) tokens = g_strsplit(argv[i], "=", 2);
         if (g_strcmp0(tokens[0], "filename") == 0) {
             file_name = g_strdup(tokens[1]);
+        } else if (g_strcmp0(tokens[0], "start_code") == 0) {
+            start_code = g_ascii_strtoull(tokens[1], NULL, 0);
+        } else if (g_strcmp0(tokens[0], "end_code") == 0) {
+            end_code = g_ascii_strtoull(tokens[1], NULL, 0);
+        } else if (g_strcmp0(tokens[0], "entry_addr") == 0) {
+            entry_addr = g_ascii_strtoull(tokens[1], NULL, 0);
+        } else if (g_strcmp0(tokens[0], "bin_path") == 0) {
+            bin_path = g_strdup(tokens[1]);
         }
+    }
+
+    if (!bin_path) {
+        bin_path = "unknown";
+    }
+
+    if (start_code > entry_addr) {
+        entry_addr = start_code;
+    }
+
+    if (!end_code) {
+        end_code = UINT64_MAX;
     }
 
     plugin_init();
