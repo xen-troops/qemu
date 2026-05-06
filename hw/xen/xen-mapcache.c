@@ -582,11 +582,10 @@ static void xen_invalidate_map_cache_entry_unlocked(MapCache *mc,
         return;
     }
     entry->lock--;
-    if (entry->lock > 0 || pentry == NULL) {
+    if (entry->lock > 0) {
         return;
     }
 
-    pentry->next = entry->next;
     ram_block_notify_remove(entry->vaddr_base, entry->size, entry->size);
     if (entry->flags & XEN_MAPCACHE_ENTRY_GRANT) {
         rc = xengnttab_unmap(xen_region_gnttabdev, entry->vaddr_base,
@@ -601,7 +600,22 @@ static void xen_invalidate_map_cache_entry_unlocked(MapCache *mc,
     }
 
     g_free(entry->valid_mapping);
-    g_free(entry);
+    if (pentry) {
+        pentry->next = entry->next;
+        g_free(entry);
+    } else {
+        /*
+         * Invalidate mapping but keep entry->next pointing to the rest
+         * of the list.
+         *
+         * Note that lock is already zero here, otherwise we don't unmap.
+         */
+        entry->paddr_index = 0;
+        entry->vaddr_base = NULL;
+        entry->valid_mapping = NULL;
+        entry->flags = 0;
+        entry->size = 0;
+    }
 }
 
 typedef struct XenMapCacheData {
