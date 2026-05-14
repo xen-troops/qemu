@@ -132,22 +132,18 @@ static MapCache *xen_map_cache_init_single(phys_offset_to_gaddr_t f,
     return mc;
 }
 
+#define DEFAULT_BUCKET_SHIFT 16U
+
 void xen_map_cache_init(phys_offset_to_gaddr_t f, void *opaque)
 {
     struct rlimit rlimit_as;
     unsigned long max_mcache_size;
-    unsigned int bucket_shift;
+    unsigned int bucket_shift = DEFAULT_BUCKET_SHIFT;
 
     xen_region_gnttabdev = xengnttab_open(NULL, 0);
     if (xen_region_gnttabdev == NULL) {
         error_report("mapcache: Failed to open gnttab device");
         exit(EXIT_FAILURE);
-    }
-
-    if (HOST_LONG_BITS == 32) {
-        bucket_shift = 16;
-    } else {
-        bucket_shift = 20;
     }
 
     if (geteuid() == 0) {
