@@ -30,7 +30,7 @@ static char header[] = "DRCOV VERSION: 2\n"
 static FILE *fp;
 static const char *file_name = "file.drcov.trace";
 static const char *bin_path;
-static uint64_t start_code, end_code, entry_addr;
+static uint64_t start_code, entry_addr, end_code = UINT64_MAX;
 static GMutex lock;
 
 typedef struct {
@@ -45,6 +45,30 @@ static GPtrArray *blocks;
 
 static void printf_header(unsigned long count)
 {
+    if (!bin_path) {
+        bin_path = qemu_plugin_path_to_binary();
+
+        if (!bin_path) {
+            bin_path = "unknown";
+        }
+    }
+
+    if (start_code == 0) {
+        start_code = qemu_plugin_start_code();
+    }
+
+    if (end_code == UINT64_MAX) {
+        end_code = qemu_plugin_end_code();
+    }
+
+    if (entry_addr == 0) {
+        entry_addr = qemu_plugin_entry_code();
+    }
+
+    if (start_code > entry_addr) {
+        entry_addr = start_code;
+    }
+
     fprintf(fp, "%s", header);
     fprintf(fp, "0, 0x%" PRIx64 ", 0x%" PRIx64 ", 0x%" PRIx64 ", %s\n",
             start_code, end_code, entry_addr, bin_path);
@@ -148,11 +172,6 @@ QEMU_PLUGIN_EXPORT
 int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info,
                         int argc, char **argv)
 {
-    bin_path = qemu_plugin_path_to_binary();
-    start_code = qemu_plugin_start_code();
-    end_code = qemu_plugin_end_code();
-    entry_addr = qemu_plugin_entry_code();
-
     for (int i = 0; i < argc; i++) {
         g_auto(GStrv) tokens = g_strsplit(argv[i], "=", 2);
         if (g_strcmp0(tokens[0], "filename") == 0) {
@@ -166,18 +185,6 @@ int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info,
         } else if (g_strcmp0(tokens[0], "bin_path") == 0) {
             bin_path = g_strdup(tokens[1]);
         }
-    }
-
-    if (!bin_path) {
-        bin_path = "unknown";
-    }
-
-    if (start_code > entry_addr) {
-        entry_addr = start_code;
-    }
-
-    if (!end_code) {
-        end_code = UINT64_MAX;
     }
 
     plugin_init();
