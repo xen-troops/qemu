@@ -1217,9 +1217,12 @@ static void create_virtio_devices(const VirtMachineState *vms)
 
         DeviceState* dev = sysbus_create_simple("virtio-mmio", base,
                              qdev_get_gpio_in(vms->gic, irq));
-        
-        VirtIOMMIOProxy *proxy = VIRTIO_MMIO(dev);
-        stream_ids[i] = proxy->stream_id;
+
+        /* Attach virtio device to IOMMU only if system SMMUv3 is created */
+        if (vms->system_smmuv3_present) {
+            VirtIOMMIOProxy *proxy = VIRTIO_MMIO(dev);
+            stream_ids[i] = proxy->stream_id;
+        }
     }
 
     /* We add dtb nodes in reverse order so that they appear in the finished
@@ -1244,9 +1247,13 @@ static void create_virtio_devices(const VirtMachineState *vms)
                                GIC_FDT_IRQ_TYPE_SPI, irq,
                                GIC_FDT_IRQ_FLAGS_EDGE_LO_HI);
         qemu_fdt_setprop(ms->fdt, nodename, "dma-coherent", NULL, 0);
-        qemu_fdt_setprop_sized_cells(ms->fdt, nodename, "iommus",
-                                    1, vms->sysbus_virtio_iommu_phandle,
-                                    1, stream_ids[i]);
+        /* Attach virtio device to IOMMU only if system SMMUv3 is created */
+        if (vms->system_smmuv3_present) {
+            qemu_fdt_setprop_sized_cells(ms->fdt, nodename, "iommus",
+                                        1, vms->sysbus_virtio_iommu_phandle,
+                                        1, stream_ids[i]);
+        }
+
         g_free(nodename);
     }
 }
@@ -2631,7 +2638,10 @@ static void machvirt_init(MachineState *machine)
     create_pcie(vms);
     create_cxl_host_reg_region(vms);
 
-    create_smmu_sysbus_virtio(vms);
+    /* Instantiate additional system IOMMU only if "iommu=smmuv3" is set */
+    if (vms->iommu == VIRT_IOMMU_SMMUV3) {
+        create_smmu_sysbus_virtio(vms);
+    }
 
     if (aarch64 && firmware_loaded && virt_is_acpi_enabled(vms)) {
         vms->acpi_dev = create_acpi_ged(vms);
