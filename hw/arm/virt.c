@@ -43,6 +43,7 @@
 #include "hw/display/ramfb.h"
 #include "net/net.h"
 #include "system/device_tree.h"
+#include "system/hw_accel.h"
 #include "system/numa.h"
 #include "system/runstate.h"
 #include "system/tpm.h"
@@ -53,6 +54,7 @@
 #include "system/qtest.h"
 #include "system/system.h"
 #include "hw/core/loader.h"
+#include "hw/core/resettable.h"
 #include "qapi/error.h"
 #include "qemu/bitops.h"
 #include "qemu/cutils.h"
@@ -1092,6 +1094,22 @@ static void create_gpio_keys(char *fdt, DeviceState *pl061_dev,
 
 #define SECURE_GPIO_POWEROFF 0
 #define SECURE_GPIO_RESET    1
+#define SECURE_GPIO_SUSPEND  2
+
+static CPUState *suspend_cpu;
+
+static void virt_system_suspend(void *opaque, int n, int level)
+{
+    if (!level) {
+        return;
+    }
+
+    g_assert(current_cpu != NULL);
+    g_assert(current_cpu->cpu_index == 0);
+    g_assert(suspend_cpu == NULL);
+    suspend_cpu = current_cpu;
+    qemu_system_suspend_request();
+}
 
 static void create_secure_gpio_pwr(char *fdt, DeviceState *pl061_dev,
                                    uint32_t phandle)
@@ -1106,6 +1124,9 @@ static void create_secure_gpio_pwr(char *fdt, DeviceState *pl061_dev,
                           qdev_get_gpio_in_named(gpio_pwr_dev, "reset", 0));
     qdev_connect_gpio_out(pl061_dev, SECURE_GPIO_POWEROFF,
                           qdev_get_gpio_in_named(gpio_pwr_dev, "shutdown", 0));
+    qdev_connect_gpio_out(pl061_dev, SECURE_GPIO_SUSPEND,
+                          qemu_allocate_irq(virt_system_suspend, NULL, 0));
+    qemu_register_wakeup_support();
 
     qemu_fdt_add_subnode(fdt, "/gpio-poweroff");
     qemu_fdt_setprop_string(fdt, "/gpio-poweroff", "compatible",
@@ -1124,6 +1145,17 @@ static void create_secure_gpio_pwr(char *fdt, DeviceState *pl061_dev,
     qemu_fdt_setprop_string(fdt, "/gpio-restart", "status", "disabled");
     qemu_fdt_setprop_string(fdt, "/gpio-restart", "secure-status",
                             "okay");
+}
+
+static void virt_machine_wakeup(MachineState *machine)
+{
+    CPUState *cpu = suspend_cpu;
+
+    g_assert(cpu != NULL);
+    cpu_synchronize_state(cpu);
+    resettable_reset(OBJECT(cpu), RESET_TYPE_WAKEUP);
+    cpu_synchronize_post_reset(cpu);
+    suspend_cpu = NULL;
 }
 
 static void create_gpio_devices(const VirtMachineState *vms, int gpio,
@@ -3543,6 +3575,7 @@ static void virt_machine_class_init(ObjectClass *oc, const void *data)
     HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(oc);
 
     mc->init = machvirt_init;
+    mc->wakeup = virt_machine_wakeup;
     /* Start with max_cpus set to 512, which is the maximum supported by KVM.
      * The value may be reduced later when we have more information about the
      * configuration of the particular instance.
