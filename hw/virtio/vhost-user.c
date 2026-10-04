@@ -189,6 +189,7 @@ typedef struct VhostUserMemoryRegion {
  */
 #define VHOST_USER_XEN_MMAP_FLAG_FOREIGN    0x1
 #define VHOST_USER_XEN_MMAP_FLAG_GRANT      0x2
+#define VHOST_USER_XEN_MMAP_FLAG_NO_ADVANCE_MAP 0x8
 
 typedef struct VhostUserMemoryRegionXen {
     VhostUserMemoryRegion region;
@@ -717,6 +718,10 @@ static int vhost_user_fill_set_mem_table_msg(struct vhost_user *u,
                 msg->payload.memory_xen.regions[*fd_num].region = region_buffer;
                 msg->payload.memory_xen.regions[*fd_num].xen_mmap_flags =
                     VHOST_USER_XEN_MMAP_FLAG_FOREIGN;
+                if (dev->xen_no_advance_map) {
+                    msg->payload.memory_xen.regions[*fd_num].xen_mmap_flags |=
+                        VHOST_USER_XEN_MMAP_FLAG_NO_ADVANCE_MAP;
+                }
                 msg->payload.memory_xen.regions[*fd_num].xen_mmap_data =
                     xen_domid;
             } else {

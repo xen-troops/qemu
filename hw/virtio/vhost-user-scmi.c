@@ -254,6 +254,7 @@ static void vu_scmi_device_realize(DeviceState *dev, Error **errp)
     scmi->event_vq = virtio_add_queue(vdev, 256, vu_scmi_handle_output);
     scmi->vhost_dev.nvqs = 2;
     scmi->vhost_dev.vqs = g_new0(struct vhost_virtqueue, scmi->vhost_dev.nvqs);
+    scmi->vhost_dev.xen_no_advance_map = scmi->xen_no_advance_map;
     vhost_vqs = scmi->vhost_dev.vqs;
 
     ret = vhost_dev_init(&scmi->vhost_dev, &scmi->vhost_user,
@@ -287,6 +288,8 @@ static const VMStateDescription vu_scmi_vmstate = {
 
 static const Property vu_scmi_properties[] = {
     DEFINE_PROP_CHR("chardev", VHostUserSCMI, chardev),
+    DEFINE_PROP_BOOL("xen-no-advance-map", VHostUserSCMI,
+                     xen_no_advance_map, false),
 };
 
 static void vu_scmi_class_init(ObjectClass *klass, const void *data)

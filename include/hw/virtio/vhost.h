@@ -107,6 +107,7 @@ struct vhost_dev {
 
     uint64_t max_queues;
     uint64_t backend_cap;
+    bool xen_no_advance_map;
     /* @started: is the vhost device started? */
     bool started;
     bool log_enabled;
