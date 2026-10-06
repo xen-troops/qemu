@@ -125,7 +125,7 @@ static int vu_scmi_set_status(VirtIODevice *vdev, uint8_t status)
     }
 
     if (should_start) {
-        vu_scmi_start(vdev);
+        return vu_scmi_start(vdev);
     } else {
         int ret;
         ret = vu_scmi_stop(vdev);
@@ -170,21 +170,36 @@ static bool vu_scmi_guest_notifier_pending(VirtIODevice *vdev, int idx)
     return vhost_virtqueue_pending(&scmi->vhost_dev, idx);
 }
 
-static void vu_scmi_connect(DeviceState *dev)
+static int vu_scmi_connect(DeviceState *dev, Error **errp)
 {
     VirtIODevice *vdev = VIRTIO_DEVICE(dev);
     VHostUserSCMI *scmi = VHOST_USER_SCMI(vdev);
+    int ret;
 
     if (scmi->connected) {
-        return;
+        return 0;
+    }
+
+    ret = vhost_dev_init(&scmi->vhost_dev, &scmi->vhost_user,
+                         VHOST_BACKEND_TYPE_USER, 0, errp);
+    if (ret < 0) {
+        return ret;
     }
     scmi->connected = true;
 
     /* restore vhost state */
     if (virtio_device_started(vdev, vdev->status)) {
-        vu_scmi_start(vdev);
+        ret = vu_scmi_start(vdev);
+        if (ret < 0) {
+            error_setg_errno(errp, -ret, "vhost-user-scmi: failed to start");
+            return ret;
+        }
     }
+
+    return 0;
 }
+
+static void vu_scmi_event(void *opaque, QEMUChrEvent event);
 
 static void vu_scmi_disconnect(DeviceState *dev)
 {
@@ -192,25 +207,40 @@ static void vu_scmi_disconnect(DeviceState *dev)
     VHostUserSCMI *scmi = VHOST_USER_SCMI(vdev);
 
     if (!scmi->connected) {
-        return;
+        goto done;
     }
     scmi->connected = false;
 
     if (vhost_dev_is_started(&scmi->vhost_dev)) {
         vu_scmi_stop(vdev);
     }
+
+    vhost_dev_cleanup(&scmi->vhost_dev);
+
+done:
+    /* Re-instate the event handler for new connections */
+    qemu_chr_fe_set_handlers(&scmi->chardev, NULL, NULL, vu_scmi_event, NULL,
+                             dev, NULL, true);
 }
 
 static void vu_scmi_event(void *opaque, QEMUChrEvent event)
 {
     DeviceState *dev = opaque;
+    VHostUserSCMI *scmi = VHOST_USER_SCMI(dev);
+    Error *local_err = NULL;
 
     switch (event) {
     case CHR_EVENT_OPENED:
-        vu_scmi_connect(dev);
+        if (vu_scmi_connect(dev, &local_err) < 0) {
+            error_report_err(local_err);
+            qemu_chr_fe_disconnect(&scmi->chardev);
+            return;
+        }
         break;
     case CHR_EVENT_CLOSED:
-        vu_scmi_disconnect(dev);
+        /* defer close until later to avoid circular close */
+        vhost_user_async_close(dev, &scmi->chardev, &scmi->vhost_dev,
+                               vu_scmi_disconnect);
         break;
     case CHR_EVENT_BREAK:
     case CHR_EVENT_MUX_IN:
@@ -228,6 +258,28 @@ static void do_vhost_user_cleanup(VirtIODevice *vdev, VHostUserSCMI *scmi,
     g_free(vhost_vqs);
     virtio_cleanup(vdev);
     vhost_user_cleanup(&scmi->vhost_user);
+}
+
+static int vu_scmi_realize_connect(VHostUserSCMI *scmi, Error **errp)
+{
+    DeviceState *dev = DEVICE(scmi);
+    int ret;
+
+    scmi->connected = false;
+
+    ret = qemu_chr_fe_wait_connected(&scmi->chardev, errp);
+    if (ret < 0) {
+        return ret;
+    }
+
+    ret = vu_scmi_connect(dev, errp);
+    if (ret < 0) {
+        qemu_chr_fe_disconnect(&scmi->chardev);
+        return ret;
+    }
+    assert(scmi->connected);
+
+    return 0;
 }
 
 static void vu_scmi_device_realize(DeviceState *dev, Error **errp)
@@ -257,11 +309,8 @@ static void vu_scmi_device_realize(DeviceState *dev, Error **errp)
     scmi->vhost_dev.xen_no_advance_map = scmi->xen_no_advance_map;
     vhost_vqs = scmi->vhost_dev.vqs;
 
-    ret = vhost_dev_init(&scmi->vhost_dev, &scmi->vhost_user,
-                         VHOST_BACKEND_TYPE_USER, 0, errp);
+    ret = vu_scmi_realize_connect(scmi, errp);
     if (ret < 0) {
-        error_setg_errno(errp, -ret,
-                         "vhost-user-scmi: vhost_dev_init() failed");
         do_vhost_user_cleanup(vdev, scmi, vhost_vqs);
         return;
     }
@@ -277,6 +326,8 @@ static void vu_scmi_device_unrealize(DeviceState *dev)
     struct vhost_virtqueue *vhost_vqs = scmi->vhost_dev.vqs;
 
     vu_scmi_set_status(vdev, 0);
+    qemu_chr_fe_set_handlers(&scmi->chardev, NULL, NULL, NULL, NULL, NULL,
+                             NULL, false);
     vhost_dev_cleanup(&scmi->vhost_dev);
     do_vhost_user_cleanup(vdev, scmi, vhost_vqs);
 }
